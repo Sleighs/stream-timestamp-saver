@@ -14,39 +14,7 @@
 
 ### Features 
 
-- 🔄 Automatic timestamp saving and loading
-- 🎯 Support for both YouTube and Rumble video platforms
-- ⚙️ Configurable settings for debug mode and notifications
-- 🔒 Local storage for privacy-focused timestamp saving
-- ⚡ Performance-optimized with minimal overhead
-- 🛠️ Debug logging system for troubleshooting
 
-## Technical Details
-
-### Content Script (`content.js`)
-
-The content script is the core of Stream Timestamp Saver, responsible for:
-
-- **Video Detection**: Automatically detects video elements on supported platforms
-- **Timestamp Management**: 
-  - Saves current video position
-  - Restores previous timestamps when returning to videos
-  - Handles both regular videos and livestreams
-- **Settings System**:
-  - Configurable options for debug mode
-  - Notification controls
-  - Auto-save/load functionality
-- **Message Handling**: 
-  - Communicates with background scripts
-  - Handles settings updates
-  - Manages timestamp operations
-
-### Storage
-
-The extension uses Chrome's local storage with the following keys:
-- `stream-timestamp-saver--settings`: Extension settings
-- `stream-timestamp-saver--savedtimestamps`: Saved video timestamps
-- `stream-timestamp-saver--localstorage-settings`: Local storage configuration
 
 ## Installation
 
