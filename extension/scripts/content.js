@@ -1,10 +1,18 @@
 /* Welcome to Stream Timestamp Saver*/
-
-const { channel } = require("diagnostics_channel");
+console.log('Stream Timestamp Saver - Content Script Loaded');
 
 const browser = chrome || browser;
 
-let settings;
+let settings = {
+  enableExtension: true,
+  browserStorageType: 'local',
+  debugMode: true,
+  notificationsEnabled: true,
+  autoSave: false,
+  saveDelay: 500,
+  autoLoad: false,
+  autoLoadDelay: 2000,
+};
 
 // Debug logging system
 const debug = {
@@ -25,27 +33,22 @@ const debug = {
   }
 };
 
-// Export debug functions for use throughout the code
-const debugLog = debug.log;
-const debugError = debug.error;
-const debugWarn = debug.warn;
-const initializeDebugMode = (enabled) => {
-  settings.debugMode = enabled;
-  if (enabled) {
-    console.log('[Timestamp Saver] Debug mode initialized:', enabled);
+// Add the missing initializeOptions function
+const initializeOptions = async () => {
+  try {
+    const result = await chrome.storage.local.get('settings');
+    if (result.settings) {
+      settings = { ...settings, ...result.settings };
+      debug.log('Settings loaded:', settings);
+    } else {
+      // Save default settings if none exist
+      await chrome.storage.local.set({ settings });
+      debug.log('Default settings saved:', settings);
+    }
+  } catch (error) {
+    debug.error('Failed to initialize options:', error);
+    // Continue with default settings
   }
-};
-
-settings = {
-  enableExtension: true,
-  browserStorageType: 'local',
-  debugMode: false,
-  notificationsEnabled: true,
-  autoSave: false,
-  saveDelay: 500,
-  autoLoad: false,
-  autoLoadDelay: 2000,
-
 };
 
 const STORAGE_KEYS = {
@@ -84,7 +87,6 @@ class Video {
 }
 
 const getVideoDetails = (url) => {
-  // Future details to collect
   const videoDetails = {
     isLive: false,
     currentTime: 0,
@@ -97,7 +99,7 @@ const getVideoDetails = (url) => {
     channelName: '',
     videoTitle: '',
     videoId: '',
-    videoUrl: '',
+    videoUrl: url,
     videoThumbnail: '',
     videoDescription: '',
     videoTags: [],
@@ -105,8 +107,9 @@ const getVideoDetails = (url) => {
     videoLanguage: '',
   };
   
-  debugLog('Stream Timestamp Saver - getVideoDetails', url);
-}
+  debug.log('Stream Timestamp Saver - getVideoDetails', videoDetails);
+  return videoDetails; // Add this return statement
+};
 
 const getVideoElement = () => {
   const video = document.querySelector('video');
@@ -126,26 +129,42 @@ const isExtensionContextValid = () => {
 (async function () {
   try {
     // Basic setup
+    debug.log('Stream Timestamp Saver - Initialization');
+    
+    // Check if we're in a valid extension context
+    if (!isExtensionContextValid()) {
+      debug.error('Extension context is invalid');
+      return;
+    }
     
     // Load settings first
     await initializeOptions();
     
-    // Initialize icons
-  
-    // Ensure the stream is running
+    // Get the current video element and wait for it if necessary
+    let retryCount = 0;
+    const maxRetries = 10;
+    const checkForVideo = async () => {
+      const videoElement = getVideoElement();
+      if (videoElement) {
+        debug.log('Video element found');
+        const videoDetails = getVideoDetails(window.location.href);
+        // Initialize video handling here
+      } else if (retryCount < maxRetries) {
+        retryCount++;
+        debug.log(`Waiting for video element... (${retryCount}/${maxRetries})`);
+        setTimeout(checkForVideo, 1000);
+      } else {
+        debug.warn('Video element not found after maximum retries');
+      }
+    };
 
-    // Get the current video element
-    const videoElement = getVideoElement();
-    if (videoElement) {
-      const videoDetails = getVideoDetails(url);
-    }
+    await checkForVideo();
 
-    if (settings.debugMode) console.log('Stream Timestamp Saver initialized');
+    debug.log('Stream Timestamp Saver initialized');
   } catch (error) {
-    if (settings.debugMode) console.error('Error initializing Stream Timestamp Saver:', error);
+    debug.error('Error initializing Stream Timestamp Saver:', error);
   }
 })();
-
 
 // Listen for messages from options panel and frontend
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
