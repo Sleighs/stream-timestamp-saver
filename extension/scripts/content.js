@@ -19,19 +19,98 @@ let timestamps = [];
 
 // Debug logging system
 const debug = {
+  getCallerInfo() {
+    try {
+      const error = new Error();
+      const stackLines = error.stack.split('\n');
+      
+      // Find the first relevant stack frame (skip Error, getCallerInfo, and log methods)
+      for (let i = 3; i < stackLines.length; i++) {
+        const line = stackLines[i].trim();
+        
+        // Enhanced patterns with better function name extraction
+        const patterns = [
+          // Named function with file info
+          {
+            pattern: /at ([^(]+) \((.+?):(\d+):(\d+)\)/,
+            extract: (match) => ({
+              func: match[1].split('.').pop().trim(),
+              file: match[2],
+              line: match[3]
+            })
+          },
+          // Anonymous function or method with file info
+          {
+            pattern: /at (.+?):(\d+):(\d+)/,
+            extract: (match) => ({
+              func: 'anonymous',
+              file: match[1],
+              line: match[2]
+            })
+          },
+          // Function call without line info
+          {
+            pattern: /at ([^(]+) \((.+)\)/,
+            extract: (match) => ({
+              func: match[1].split('.').pop().trim(),
+              file: match[2],
+              line: '?'
+            })
+          }
+        ];
+
+        for (const { pattern, extract } of patterns) {
+          const match = line.match(pattern);
+          if (match) {
+            const { func, file, line } = extract(match);
+            const shortFile = file.split('/').pop().split('\\').pop();
+            const cleanName = func
+              .replace('async ', '')
+              .replace('(anonymous)', 'anonymous')
+              .replace(/^Function$/, 'anonymous')
+              .replace(/^Object\./, '')
+              .trim();
+            
+            return `[${cleanName} @ ${shortFile}:${line}]`;
+          }
+        }
+
+        // If no patterns match but we have a line, try to extract something useful
+        const fallbackMatch = line.match(/at (.+)/);
+        if (fallbackMatch) {
+          const cleanName = fallbackMatch[1]
+            .split(' ')[0]
+            .split('.').pop()
+            .replace('async ', '')
+            .replace(/[(<].*/, '')
+            .trim();
+          return `[${cleanName}]`;
+        }
+      }
+    } catch (error) {
+      console.error('Error in getCallerInfo:', error);
+    }
+    return '[unknown]';
+  },
+  
   log: (message, ...args) => {
     if (settings?.debugMode) {
-      console.log(`[Stream Timestamp Saver] ${message}`, ...args);
+      const callerInfo = debug.getCallerInfo();
+      console.log(`[Stream Timestamp Saver] ${callerInfo} ${message}`, ...args);
     }
   },
+
   error: (message, error, ...args) => {
     if (settings?.debugMode) {
-      console.error(`[Stream Timestamp Saver] ${message}:`, error, ...args);
+      const callerInfo = debug.getCallerInfo();
+      console.error(`[Stream Timestamp Saver] ${callerInfo} ${message}:`, error, ...args);
     }
   },
+
   warn: (message, ...args) => {
     if (settings?.debugMode) {
-      console.warn(`[Stream Timestamp Saver] ${message}`, ...args);
+      const callerInfo = debug.getCallerInfo();
+      console.warn(`[Stream Timestamp Saver] ${callerInfo} ${message}`, ...args);
     }
   }
 };
@@ -355,6 +434,7 @@ class TimestampManager {
     this.hasRestoredPosition = false;
     this.restoreAttempts = 0;
     this.maxRestoreAttempts = 3;
+    this.autoSaveDelay = 10000;
   }
 
   async initialize(videoElement, url) {
@@ -523,9 +603,9 @@ class TimestampManager {
         this.startAutoSave();
       } else {
         debug.log('Position not confirmed, delaying auto-save');
-        this.scheduleAutoSave(); // Try again in 30 seconds
+        this.scheduleAutoSave();
       }
-    }, 30000);
+    }, this.autoSaveDelay);
   }
 
   extractVideoId(url) {
