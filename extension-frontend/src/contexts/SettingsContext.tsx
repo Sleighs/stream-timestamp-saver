@@ -215,8 +215,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
     if (chrome?.storage) {
       const handleStorageChange = (
-        changes: { [key: string]: chrome.storage.StorageChange },
-        areaName: string
+        changes: { [key: string]: chrome.storage.StorageChange }
       ) => {
         try {
           if (changes.settings) {

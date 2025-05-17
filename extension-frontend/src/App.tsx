@@ -1,23 +1,9 @@
 import { useEffect, useState } from 'react';
-import { MantineProvider, Container, Title, Text, Button, Stack, Card, Group, Alert, Switch } from '@mantine/core';
+import { MantineProvider, Container, Title, Text, Button, Stack, Alert, Switch, Group } from '@mantine/core';
 import type { TimestampStore } from './types';
 import { useSettings } from './contexts/SettingsContext';
 import { updateIcon, clearTimestamp as clearTimestampExt, clearAllTimestamps as clearAllTimestampsExt } from './scripts/extension';
-
-function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${minutes}:${secs.toString().padStart(2, '0')}`;
-}
-
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString();
-}
+import { RecentSessions } from './components/RecentSessions';
 
 function App() {
   const { settings, updateSetting, showNotification } = useSettings();
@@ -176,35 +162,10 @@ function App() {
             </Alert>
           )}
           
-          {Object.entries(timestamps).map(([url, data]) => (
-            <Card key={url} shadow="sm" padding="sm" withBorder>
-              <Text size="sm" c="dimmed" truncate>
-                {url}
-              </Text>
-              <Group justify="space-between" mt="xs">
-                <Text fw={500}>
-                  {formatTime(data.timestamp)}
-                </Text>
-                <Button 
-                  variant="light" 
-                  color="red" 
-                  size="xs"
-                  onClick={() => clearTimestamp(url)}
-                >
-                  Clear
-                </Button>
-              </Group>
-              <Text size="xs" c="dimmed" mt="xs">
-                Last accessed: {formatDate(data.lastAccessed)}
-              </Text>
-            </Card>
-          ))}
-
-          {Object.keys(timestamps).length === 0 && (
-            <Text c="dimmed" ta="center">
-              No saved timestamps yet
-            </Text>
-          )}
+          <RecentSessions 
+            timestamps={timestamps}
+            onClearTimestamp={clearTimestamp}
+          />
 
           {Object.keys(timestamps).length > 0 && (
             <Button 

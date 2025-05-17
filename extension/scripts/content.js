@@ -164,10 +164,16 @@ class Video {
     this.streamEndTime = 0;
     this.streamDuration = 0;
 
-    // Save history
+    // Session info
+    this.sessionId = videoDetails.sessionId || this.generateSessionId();
     this.lastSavedTime = videoDetails.lastSavedTime || 0;
     this.lastSaveTimestamp = videoDetails.lastSaveTimestamp || 0;
     this.watchHistory = videoDetails.watchHistory || [];
+  }
+
+  generateSessionId() {
+    // Generate a unique session ID using timestamp and random number
+    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   extractVideoId(url) {
@@ -230,6 +236,7 @@ class Video {
       lastSaveTimestamp: this.lastSaveTimestamp,
       streamStartTime: this.streamStartTime,
       streamEndTime: this.streamEndTime,
+      sessionId: this.sessionId,
       watchHistory: this.watchHistory
     };
   }
@@ -432,6 +439,7 @@ class TimestampManager {
     this.isRestoringTimestamp = false;
     this.initialLoadTime = Date.now();
     this.hasRestoredPosition = false;
+    this.isSeeking = false;  // New flag to track seeking state
     this.restoreAttempts = 0;
     this.maxRestoreAttempts = 3;
     this.autoSaveDelay = 10000;
@@ -598,7 +606,8 @@ class TimestampManager {
   scheduleAutoSave() {
     debug.log('Scheduling auto-save start');
     setTimeout(() => {
-      if (this.hasRestoredPosition) {
+      // Modified condition to also check seeking state
+      if (this.hasRestoredPosition || this.isSeeking) {
         debug.log('Starting auto-save after position confirmed');
         this.startAutoSave();
       } else {
@@ -643,7 +652,15 @@ class TimestampManager {
 
   handleVideoSeeking() {
     if (!this.currentVideo) return;
-    this.saveTimestamp();
+    
+    this.isSeeking = true;
+    // Set a timeout to reset the seeking state
+    setTimeout(() => {
+      this.isSeeking = false;
+      // Ensure position is considered restored after user seeking
+      this.hasRestoredPosition = true;
+      this.saveTimestamp();
+    }, 500);
   }
 
   handleVideoPause() {
@@ -666,7 +683,8 @@ class TimestampManager {
     }
     
     this.saveInterval = setInterval(() => {
-      if (!this.isRestoringTimestamp && this.hasRestoredPosition) {
+      // Modified condition to handle seeking state
+      if (!this.isRestoringTimestamp && (this.hasRestoredPosition || this.isSeeking)) {
         if (this.currentVideo?.videoElement && !this.currentVideo.videoElement.paused) {
           debug.log('Auto-saving. Current time:', this.currentVideo.videoElement.currentTime);
           this.saveTimestamp();
