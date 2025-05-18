@@ -1,5 +1,5 @@
 /* Welcome to Stream Timestamp Saver*/
-console.log('[Stream Timestamp Saver] Content Script Loaded');
+// console.log('[Stream Timestamp Saver] Content Script Loaded');
 
 const browser = chrome || browser;
 
@@ -240,11 +240,30 @@ class Video {
       watchHistory: this.watchHistory
     };
   }
+
+  async updateLiveStatus() {
+    this.isLive = await LiveStreamDetector.detectLiveStream(this.videoElement);
+    
+    if (this.isLive) {
+      debug.log('Live stream detected, updating properties');
+      this.totalTime = Infinity;
+      this.streamStartTime = Date.now();
+      this.streamEndTime = 0;
+    }
+    
+    return this.isLive;
+  }
 }
 
 // Storage Manager for handling both chrome.storage and localStorage
 class StorageManager {
   static async saveVideo(video) {
+    // Early return if URL is from music.youtube.com
+    if (video?.url?.includes('music.youtube.com')) {
+      debug.log('Skipping save for music.youtube.com URL');
+      return;
+    }
+
     const data = video.toJSON();
     const key = video.getStorageKey();
     
@@ -278,6 +297,12 @@ class StorageManager {
   }
 
   static async loadVideo(videoId) {
+    // Early return if current URL is from music.youtube.com
+    if (window.location.href.includes('music.youtube.com')) {
+      debug.log('Skipping load for music.youtube.com URL');
+      return null;
+    }
+
     const key = `timestamp-${videoId}`;
     
     try {
@@ -326,6 +351,85 @@ class StorageManager {
     }
   }
 }
+
+// Function to detect live streams using multiple indicators
+class LiveStreamDetector {
+  static getBadgeIndicators() {
+    return {
+      youtube: {
+        liveBadge: document.querySelector('.ytp-live-badge[disabled="false"]') !== null,
+        altLiveBadge: document.querySelector('[class*="live-badge"]:not([disabled])') !== null,
+        liveChat: document.querySelector('#chat-messages, #live-chat') !== null,
+        // Additional check for actual live chat frame
+        liveChatFrame: document.querySelector('iframe#chatframe') !== null
+      },
+      rumble: {
+        liveBadge: document.querySelector('.live-video-badge') !== null,
+        liveChat: document.querySelector('.chat-history-messages') !== null
+      }
+    };
+  }
+
+  static async detectLiveStream(videoElement) {
+    if (!videoElement) return false;
+
+    // Initial checks
+    const initialState = {
+      duration: videoElement.duration,
+      badges: this.getBadgeIndicators(),
+      timestamp: Date.now()
+    };
+
+    debug.log('Initial live check state:', initialState);
+
+    // Quick return if Infinity duration or live chat present
+    if (initialState.duration === Infinity || 
+        initialState.badges.youtube.liveChat || 
+        initialState.badges.youtube.liveChatFrame ||
+        initialState.badges.rumble.liveChat) {
+      debug.log('Immediate live detection via live chat or Infinity duration');
+      return true;
+    }
+
+    // Wait and perform second check
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Second check
+    const secondState = {
+      duration: videoElement.duration,
+      badges: this.getBadgeIndicators(),
+      timestamp: Date.now()
+    };
+
+    debug.log('Second live check state:', secondState);
+
+    // Compare states with stricter criteria
+    const durationChanged = Math.abs(secondState.duration - initialState.duration) > 1;
+    const hasLiveChat = secondState.badges.youtube.liveChat || 
+                       secondState.badges.youtube.liveChatFrame ||
+                       secondState.badges.rumble.liveChat;
+    const hasActiveLiveBadge = (secondState.badges.youtube.liveBadge && !videoElement.hasAttribute('disabled')) ||
+                              secondState.badges.rumble.liveBadge;
+
+    // Prioritize live chat and duration changes
+    const isLive = (
+      secondState.duration === Infinity ||
+      (durationChanged && hasActiveLiveBadge) ||
+      hasLiveChat
+    );
+
+    debug.log('Live stream detection result:', {
+      isLive,
+      durationChanged,
+      hasLiveChat,
+      hasActiveLiveBadge,
+      duration: secondState.duration
+    });
+
+    return isLive;
+  }
+}
+
 
 const getVideoDetails = (url) => {
   const videoElement = getVideoElement();
@@ -385,8 +489,10 @@ const getVideoDetails = (url) => {
       }
       
       // Live detection
-      videoDetails.isLive = document.querySelector('.ytp-live-badge') !== null ||
-                           document.querySelector('[class*="live-badge"]') !== null;
+      // videoDetails.isLive = document.querySelector('.ytp-live-badge') !== null ||
+      //                      document.querySelector('[class*="live-badge"]') !== null;
+      videoDetails.isLive = LiveStreamDetector.detectLiveStream(videoElement);
+      debug.log('Live stream detected:', videoDetails.isLive);
 
       // Extract video ID from URL
       try {
@@ -446,26 +552,25 @@ class TimestampManager {
   }
 
   async initialize(videoElement, url) {
-    if (!videoElement) return;
+    if (!videoElement || !isValidVideoPage(url)) {
+      debug.log('Skipping initialization - invalid video page or no video element');
+      return;
+    }
     
     debug.log('Initializing with video element and URL:', url);
     
     // First check if we have a saved timestamp for this video
     const videoId = this.extractVideoId(url);
+    if (!videoId) {
+      debug.log('No valid video ID found, skipping initialization');
+      return;
+    }
+
     const savedData = await StorageManager.loadVideo(videoId);
     
     if (savedData) {
       debug.log('Found saved data:', savedData);
       
-      // For quick refreshes, wait longer for video to stabilize
-      const timeSinceLoad = Date.now() - this.initialLoadTime;
-      debug.log('Time since page load:', timeSinceLoad, 'ms');
-      
-      if (timeSinceLoad < 15000) {
-        debug.log('Quick refresh detected, waiting longer for video to stabilize');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-
       // Wait for video to be fully ready
       await this.waitForVideo(videoElement);
       
@@ -474,6 +579,7 @@ class TimestampManager {
     }
     
     const videoDetails = getVideoDetails(url);
+    videoDetails.isLive = await LiveStreamDetector.detectLiveStream(videoElement);
     this.currentVideo = new Video(videoDetails);
     this.currentVideo.videoElement = videoElement;
 
@@ -488,10 +594,10 @@ class TimestampManager {
     return new Promise((resolve) => {
       const checkReady = () => {
         if (videoElement.readyState >= 3) { // Wait for ENOUGH_DATA
-          debug.log('Video is fully ready. Ready state:', videoElement.readyState);
+          debug.log('Video is ready for playback. Ready state:', videoElement.readyState);
           resolve();
         } else {
-          debug.log('Video not fully ready, waiting. Current ready state:', videoElement.readyState);
+          debug.log('Waiting for video to be ready. Current ready state:', videoElement.readyState);
           videoElement.addEventListener('canplay', () => {
             debug.log('Video can play event fired');
             resolve();
@@ -516,86 +622,37 @@ class TimestampManager {
       if (savedTime) {
         this.isRestoringTimestamp = true;
         
-        // For quick refreshes, wait longer
-        const timeSinceLoad = Date.now() - this.initialLoadTime;
-        if (timeSinceLoad < 15000) {
-          debug.log('Quick refresh detected, waiting for video to stabilize');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        }
-
         // Function to attempt position restore
         const attemptRestore = async () => {
           debug.log('Restore attempt', this.restoreAttempts + 1, 'Setting time to:', savedTime);
           
-          // Set position and pause briefly to help it stick
+          // Set position
           videoElement.currentTime = savedTime;
-          const wasPaused = videoElement.paused;
-          if (!wasPaused) {
-            videoElement.pause();
-          }
           
-          // Wait and verify
-          await new Promise(resolve => setTimeout(resolve, 800));
-          
-          // Resume if it was playing
-          if (!wasPaused) {
-            videoElement.play();
-          }
+          // Wait a moment and verify
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           const actualTime = videoElement.currentTime;
-          debug.log('Video time after restore attempt:', actualTime);
+          // debug.log('Video time after restore attempt:', actualTime);
           
           // Check if restore was successful
           if (Math.abs(actualTime - savedTime) > 1) {
             this.restoreAttempts++;
             if (this.restoreAttempts < this.maxRestoreAttempts) {
               debug.log('Restore not successful, retrying...');
-              await new Promise(resolve => setTimeout(resolve, 1500));
+              await new Promise(resolve => setTimeout(resolve, 500));
               return attemptRestore();
             } else {
               debug.log('Max restore attempts reached');
             }
           } else {
-            debug.log('Position restored successfully');
+            debug.log('Position restored successfully', actualTime);
             this.hasRestoredPosition = true;
           }
         };
 
         await attemptRestore();
-        
-        // Enhanced position monitoring
-        let monitoringAttempts = 0;
-        const maxMonitoringAttempts = 10;
-        const monitorPosition = setInterval(() => {
-          if (!this.hasRestoredPosition || !videoElement) {
-            clearInterval(monitorPosition);
-            return;
-          }
-          
-          monitoringAttempts++;
-          const currentTime = videoElement.currentTime;
-          
-          // Check if position has drifted
-          if (Math.abs(currentTime - savedTime) > 1) {
-            debug.log('Position changed unexpectedly, attempt', monitoringAttempts, 'correcting...');
-            
-            // Only correct if we haven't exceeded max attempts
-            if (monitoringAttempts < maxMonitoringAttempts) {
-              videoElement.currentTime = savedTime;
-            } else {
-              debug.log('Max monitoring attempts reached, stopping monitor');
-              clearInterval(monitorPosition);
-              this.isRestoringTimestamp = false;
-            }
-          }
-        }, 500);
-
-        // Stop monitoring after 8 seconds (increased from 5)
-        setTimeout(() => {
-          clearInterval(monitorPosition);
-          this.isRestoringTimestamp = false;
-          debug.log('Position monitoring complete');
-        }, 8000);
+        this.isRestoringTimestamp = false;
       }
     } catch (error) {
       debug.error('Error in restoreVideoPosition:', error);
@@ -604,7 +661,7 @@ class TimestampManager {
   }
 
   scheduleAutoSave() {
-    debug.log('Scheduling auto-save start');
+    // debug.log('Scheduling auto-save start');
     setTimeout(() => {
       // Modified condition to also check seeking state
       if (this.hasRestoredPosition || this.isSeeking) {
@@ -619,17 +676,21 @@ class TimestampManager {
 
   extractVideoId(url) {
     try {
-      if (url.includes('youtube.com')) {
+      // Early return for music.youtube.com
+      if (url.includes('music.youtube.com')) {
+        debug.log('music.youtube.com URL detected, skipping video ID extraction');
+        return null;
+      }
+
+      if (url.includes('youtube.com/watch')) {
         const urlParams = new URLSearchParams(new URL(url).search);
-        return urlParams.get('v') || '';
-      } else if (url.includes('rumble.com')) {
-        const matches = url.match(/\/([a-zA-Z0-9-]+)-\d+/);
-        return matches ? matches[1] : '';
+        const videoId = urlParams.get('v');
+        return videoId || null;
       }
     } catch (error) {
       debug.error('Error extracting video ID:', error);
     }
-    return '';
+    return null;
   }
 
   setupEventListeners() {
@@ -659,7 +720,7 @@ class TimestampManager {
       this.isSeeking = false;
       // Ensure position is considered restored after user seeking
       this.hasRestoredPosition = true;
-      this.saveTimestamp();
+    this.saveTimestamp();
     }, 500);
   }
 
@@ -721,7 +782,37 @@ class TimestampManager {
 const timestampManager = new TimestampManager();
 debug.log('Created TimestampManager instance');
 
-// Update the initialization function
+// Add this function near the top, after the initial settings
+const isValidVideoPage = (url) => {
+  try {
+    // Ignore music.youtube.com completely
+    if (url.includes('music.youtube.com')) {
+      debug.log('Ignoring music.youtube.com page');
+      return false;
+    }
+
+    // Only handle youtube.com/watch pages with video IDs
+    if (url.includes('youtube.com/watch')) {
+      const urlObj = new URL(url);
+      const videoId = urlObj.searchParams.get('v');
+      // Ensure it's a direct video watch page (not a playlist view)
+      const isPlaylist = urlObj.searchParams.has('list');
+      
+      if (videoId && !isPlaylist) {
+        // debug.log('Valid YouTube video page detected');
+        return true;
+      }
+    }
+
+    debug.log('Not a valid video page:', url);
+    return false;
+  } catch (error) {
+    debug.error('Error checking URL validity:', error);
+    return false;
+  }
+};
+
+// Modify the initialization function
 (async function () {
   try {
     debug.log('Starting initialization process');
@@ -730,21 +821,30 @@ debug.log('Created TimestampManager instance');
       debug.error('Extension context is invalid');
       return;
     }
-    debug.log('Extension context valid');
+    // debug.log('Extension context valid');
+
+    // Check if we're on a valid video page
+    if (!isValidVideoPage(window.location.href)) {
+      debug.log('Not a valid video page, skipping initialization');
+      return;
+    }
     
     await initializeOptions();
-    debug.log('Options initialized');
+    // debug.log('Options initialized');
     
     let retryCount = 0;
     const maxRetries = 10;
     
     const checkForVideo = async () => {
-      debug.log('Checking for video element');
+      // debug.log('Checking for video element');
       const videoElement = getVideoElement();
       if (videoElement) {
-        debug.log('Video element found:', videoElement);
-        await timestampManager.initialize(videoElement, window.location.href);
-        debug.log('TimestampManager initialized with video');
+        // debug.log('Video element found:', videoElement);
+        // Only initialize if we're still on a valid video page
+        if (isValidVideoPage(window.location.href)) {
+          await timestampManager.initialize(videoElement, window.location.href);
+          debug.log('TimestampManager initialized with video', videoElement);
+        }
       } else if (retryCount < maxRetries) {
         retryCount++;
         debug.log(`Retry ${retryCount}/${maxRetries} - No video element yet`);
@@ -755,7 +855,7 @@ debug.log('Created TimestampManager instance');
     };
 
     await checkForVideo();
-    debug.log('Initial video check complete');
+    // debug.log('Initial video check complete');
   } catch (error) {
     debug.error('Error in initialization:', error);
   }
@@ -840,7 +940,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true; // Keep the message channel open for async responses
 });
 
-// Handle URL changes (for single-page apps like YouTube)
+// Modify the URL change observer
 let lastUrl = window.location.href;
 new MutationObserver(() => {
   const currentUrl = window.location.href;
@@ -855,10 +955,14 @@ new MutationObserver(() => {
       timestampManager.currentVideo = null;
     }
 
-    // Initialize for the new video
-    const videoElement = getVideoElement();
-    if (videoElement) {
-      timestampManager.initialize(videoElement, currentUrl);
+    // Only initialize for valid video pages
+    if (isValidVideoPage(currentUrl)) {
+      const videoElement = getVideoElement();
+      if (videoElement) {
+        timestampManager.initialize(videoElement, currentUrl);
+      }
+    } else {
+      debug.log('New URL is not a valid video page, skipping initialization');
     }
   }
 }).observe(document, { subtree: true, childList: true });
