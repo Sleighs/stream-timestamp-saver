@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import Notification from '../components/Notification/Notification';
 
-interface Settings {
+export interface Settings {
   extensionEnabled: boolean;
   debugMode: boolean;
   notificationsEnabled: boolean;

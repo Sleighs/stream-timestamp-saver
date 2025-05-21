@@ -5,11 +5,10 @@ import StreamList from './components/StreamList/StreamList';
 import OptionsPanel from './components/OptionsPanel/OptionsPanel';
 import About from './components/About/About';
 
-const STORAGE_KEYS = {
-  SETTINGS: 'stream-timestamp-saver--settings', // Extension
-  SAVED_TIMESTAMPS: 'savedTimestamps', // Extension
-  LOCALSTORAGE_TIMESTAMPS: 'stream-timestamp-saver--timestamps', // Localstorage
-};
+interface Stream {
+  url: string;
+  [key: string]: any;
+}
 
 const TABS = [
   {
@@ -35,9 +34,9 @@ const TABS = [
 function App() {
   const { settings, isLoading: isSettingsLoading, updateSettings, showNotification } = useSettings();
   const [activeTab, setActiveTab] = useState('streams');
-  const [savedStreams, setSavedStreams] = useState([]);
+  const [savedStreams, setSavedStreams] = useState<Stream[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [isPopup, setIsPopup] = useState(false);
 
   const loadStreams = async () => {
@@ -91,8 +90,8 @@ function App() {
 
   const handleToggleExtension = async () => {
     try {
-      await updateSettings({ enableExtension: !settings.enableExtension });
-      showNotification(`Extension ${settings.enableExtension ? 'disabled' : 'enabled'}`);
+      await updateSettings({ extensionEnabled: !settings.extensionEnabled });
+      showNotification(`Extension ${settings.extensionEnabled ? 'disabled' : 'enabled'}`);
     } catch (error) {
       console.error('Error toggling extension:', error);
       showNotification('Failed to toggle extension');
@@ -161,15 +160,15 @@ function App() {
             )}
             <div className="extension-toggle">
               <label className="toggle-label" htmlFor="extension-toggle">
-                {settings.enableExtension ? 'On' : 'Off'}
+                {settings.extensionEnabled ? 'On' : 'Off'}
               </label>
               <button
                 id="extension-toggle"
-                className={`toggle-switch ${settings.enableExtension ? 'enabled' : 'disabled'}`}
+                className={`toggle-switch ${settings.extensionEnabled ? 'enabled' : 'disabled'}`}
                 onClick={handleToggleExtension}
-                aria-label={`Extension is ${settings.enableExtension ? 'enabled' : 'disabled'}`}
+                aria-label={`Extension is ${settings.extensionEnabled ? 'enabled' : 'disabled'}`}
                 role="switch"
-                aria-checked={settings.enableExtension}
+                aria-checked={settings.extensionEnabled}
               >
                 <span className="toggle-track"></span>
                 <span className="toggle-thumb"></span>
@@ -200,16 +199,15 @@ function App() {
       <main className="app-main">
         {ActiveComponent && (
           activeTab === 'streams' ? (
-            <ActiveComponent
+            <StreamList
               onRefresh={handleRefresh}
               settings={settings}
               error={error}
             />
           ) : activeTab === 'about' ? (
-            <ActiveComponent />
+            <About />
           ) : (
-            //Settings Tab
-            <ActiveComponent
+            <OptionsPanel
               settings={settings}
               onSettingChange={updateSettings}
             />
