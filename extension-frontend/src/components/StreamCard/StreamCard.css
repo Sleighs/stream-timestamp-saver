@@ -1,0 +1,314 @@
+.stream-card {
+  background: var(--background-color, #ffffff);
+  /* border-top: 1px solid var(--border-color, rgb(207, 217, 222)); */
+  border-bottom: 1px solid var(--border-color, rgb(207, 217, 222));
+  border-radius: 0px;
+  padding: 24px;
+  /* margin-bottom: 16px; */
+  transition: background-color 0.2s ease;
+}
+
+.stream-card:hover {
+  background-color: var(--hover-color, #f7f7f7);
+}
+
+.stream-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.stream-info {
+  flex: 1;
+  margin-right: 16px;
+}
+
+.stream-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-color, #0f1419);
+  margin: 0 0 4px 0;
+}
+
+.stream-channel {
+  font-size: 14px;
+  color: var(--text-secondary, #536471);
+}
+
+.stream-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stream-action-button {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color, #cfd9de);
+  background: var(--background-color, #ffffff);
+  color: var(--text-color, #0f1419);
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stream-action-button:hover {
+  background: var(--hover-color, #f7f7f7);
+}
+
+.stream-action-button.primary {
+  color: var(--primary-color, #1d9bf0);
+}
+
+.stream-action-button.primary:hover {
+  background: var(--primary-color-light, rgba(29, 155, 240, 0.1));
+  border-color: var(--primary-color, #1d9bf0);
+}
+
+.stream-action-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.stream-action-button.refresh svg {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.stream-action-button.refresh.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.stream-action-button.refresh.loading svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.view-on-twitter {
+  color: var(--primary-color, #1d9bf0);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.view-on-twitter:hover {
+  text-decoration: underline;
+}
+
+.delete-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--background-color, #ffffff);
+  border: 1px solid var(--border-color, #cfd9de);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.delete-button:hover {
+  background: var(--error-color, #f4212e) !important;
+  border-color: var(--error-color, #f4212e);
+}
+
+.delete-button svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--text-secondary, #536471);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.2s ease;
+}
+
+.delete-button:hover svg {
+  stroke: white;
+}
+
+.stream-content {
+  margin-bottom: 12px;
+}
+
+.stream-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stream-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-indicator.live {
+  background: var(--error-color-light, rgba(244, 33, 46, 0.1));
+  color: var(--error-color, #f4212e);
+}
+
+.status-indicator.ended {
+  background: var(--text-secondary-light, rgba(83, 100, 113, 0.1));
+  color: var(--text-secondary, #536471);
+}
+
+.stream-times {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.time-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.time-label {
+  font-size: 12px;
+  color: var(--text-secondary, #536471);
+}
+
+.time-value {
+  font-size: 14px;
+  color: var(--text-color, #0f1419);
+}
+
+.time-value.link,
+.history-time.link {
+  color: var(--primary-color, #1d9bf0);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.time-value.link:hover,
+.history-time.link:hover {
+  text-decoration: underline;
+  color: var(--primary-color-dark, #1a8cd8);
+}
+
+.watch-history {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color, #cfd9de);
+}
+
+.watch-history h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color, #0f1419);
+  margin: 0 0 8px 0;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.history-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  background: var(--background-secondary, #f7f9f9);
+  border-radius: 8px;
+}
+
+.history-time {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color, #0f1419);
+}
+
+.history-timestamp {
+  font-size: 12px;
+  color: var(--text-secondary, #536471);
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+  .stream-card {
+    --background-color: #15202b;
+    --border-color: #38444d;
+    --text-color: #ffffff;
+    --text-secondary: #8b98a5;
+    --hover-color: #1c2732;
+    --primary-color-light: rgba(29, 155, 240, 0.1);
+    --error-color: #f4212e;
+    --error-color-light: rgba(244, 33, 46, 0.1);
+    --text-secondary-light: rgba(83, 100, 113, 0.1);
+    --background-secondary: #1c2732;
+  }
+
+  .time-value.link,
+  .history-time.link {
+    color: var(--primary-color, #1d9bf0);
+  }
+
+  .time-value.link:hover,
+  .history-time.link:hover {
+    color: var(--primary-color-light, #4db5f7);
+  }
+
+  /* .delete-button {
+    --background-color: #15202b;
+    --border-color: #38444d;
+  } */
+}
+
+@media (max-width: 600px) {
+  .stream-card {
+    padding: 16px;
+  }
+
+  .stream-times {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Add these styles to your existing CSS */
+.storage-icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+
+.stream-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+

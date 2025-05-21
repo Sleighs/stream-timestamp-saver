@@ -46,12 +46,40 @@ const STORAGE_KEYS = {
   SETTINGS: 'settings'
 } as const;
 
+// Mock storage for development environment
+const mockStorage = {
+  data: new Map<string, any>(),
+  get: async (key: string): Promise<any> => {
+    console.log('Mock storage get:', key);
+    const value = mockStorage.data.get(key);
+    console.log('Mock storage value:', value);
+    return value || null;
+  },
+  set: async (key: string, value: any): Promise<void> => {
+    console.log('Mock storage set:', key, value);
+    mockStorage.data.set(key, value);
+  },
+  remove: async (key: string): Promise<void> => {
+    console.log('Mock storage remove:', key);
+    mockStorage.data.delete(key);
+  }
+};
+
 // Update the storage object with better error handling and type checking
 const storage = {
   get: async (): Promise<Settings> => {
     try {
       if (!chrome?.storage) {
-        console.warn('Chrome storage not available, returning default settings');
+        console.log('Using mock storage for development environment');
+        const storedSettings = await mockStorage.get(STORAGE_KEYS.SETTINGS);
+        console.log('Retrieved settings from mock storage:', storedSettings);
+        if (storedSettings) {
+          return {
+            ...DEFAULT_SETTINGS,
+            ...storedSettings
+          };
+        }
+        console.log('No stored settings found, using defaults');
         return DEFAULT_SETTINGS;
       }
 
@@ -89,11 +117,13 @@ const storage = {
 
   set: async (settings: Partial<Settings>): Promise<void> => {
     try {
-      if (!chrome?.storage) {
-        throw new Error('Chrome storage not available');
-      }
-
       const settingsToStore = typeof settings === 'string' ? JSON.parse(settings) : settings;
+
+      if (!chrome?.storage) {
+        console.log('Using mock storage for development environment');
+        await mockStorage.set(STORAGE_KEYS.SETTINGS, settingsToStore);
+        return;
+      }
 
       return new Promise((resolve) => {
         chrome.storage.local.set({ 
@@ -115,7 +145,9 @@ const storage = {
   clear: async (): Promise<void> => {
     try {
       if (!chrome?.storage) {
-        throw new Error('Chrome storage not available');
+        console.log('Using mock storage for development environment');
+        await mockStorage.remove(STORAGE_KEYS.SETTINGS);
+        return;
       }
 
       return new Promise((resolve) => {
@@ -163,14 +195,18 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   };
 
   const loadSettings = async () => {
+    console.log('Starting to load settings...');
     try {
       const loadedSettings = await storage.get();
+      console.log('Settings loaded successfully:', loadedSettings);
       setSettings(loadedSettings);
+      setError(null);
     } catch (error) {
       console.error('Error loading settings:', error);
       setError('Failed to load settings');
       setSettings(DEFAULT_SETTINGS);
     } finally {
+      console.log('Finished loading settings, setting isLoading to false');
       setIsLoading(false);
     }
   };
@@ -211,14 +247,17 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   };
 
   useEffect(() => {
+    console.log('SettingsProvider mounted, loading settings...');
     loadSettings();
 
     if (chrome?.storage) {
+      console.log('Chrome storage available, setting up storage change listener');
       const handleStorageChange = (
         changes: { [key: string]: chrome.storage.StorageChange }
       ) => {
         try {
           if (changes.settings) {
+            console.log('Storage change detected:', changes.settings);
             const newValue = changes.settings.newValue;
             const oldValue = changes.settings.oldValue;
 
@@ -245,6 +284,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             }
 
             if (!oldSettings || (newSettings.lastSaved > oldSettings.lastSaved)) {
+              console.log('Updating settings with new values:', newSettings);
               setSettings(newSettings);
             }
           }
@@ -256,6 +296,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
       chrome.storage.onChanged.addListener(handleStorageChange);
       return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+    } else {
+      console.log('Chrome storage not available, skipping storage change listener');
     }
   }, []);
 
@@ -269,6 +311,17 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     hideNotification
   };
 
+  if (isLoading) {
+    console.log('SettingsProvider is still loading...');
+    return <div className="loading">Loading settings...</div>;
+  }
+
+  if (error) {
+    console.log('SettingsProvider encountered an error:', error);
+    return <div className="error">Error: {error}</div>;
+  }
+
+  console.log('SettingsProvider rendering with settings:', settings);
   return (
     <SettingsContext.Provider value={value}>
       {children}

@@ -9,10 +9,12 @@ let settings = {
   debugMode: true,
   notificationsEnabled: true,
   autoSave: true,
+  autoSaveNonLive: false,
   saveInterval: 4000,
   saveDelay: 500,
   autoLoad: false,
   autoLoadDelay: 2000,
+  enableLikeDislikeChecker: true,
 };
 
 let timestamps = [];
@@ -134,12 +136,167 @@ const initializeOptions = async () => {
 };
 
 const STORAGE_KEYS = {
-  SETTINGS: 'stream-timestamp-saver--settings',
-  SAVED_TIMESTAMPS: 'stream-timestamp-saver--savedtimestamps',
-  LOCALSTORAGE_TIMESTAMPS: 'stream-timestamp-saver--localstorage-settings',
+  SETTINGS: 'stream-timestamp-saver--settings', // Extension
+  SAVED_TIMESTAMPS: 'savedTimestamps', // Extension
+  LOCALSTORAGE_TIMESTAMPS: 'stream-timestamp-saver--timestamps', // Localstorage
 };
 
 let url = window.location.href;
+
+class MetadataExtractor {
+  static async fetchDislikeCount(videoId) {
+    try {
+      const response = await fetch(`https://returnyoutubedislikeapi.com/votes?videoId=${videoId}`);
+      const data = await response.json();
+      return {
+        dislikes: data.dislikes,
+        likes: data.likes, // More accurate like count
+        rating: data.rating
+      };
+    } catch (error) {
+      debug.error('Error fetching dislike count:', error);
+      return null;
+    }
+  }
+
+  static async extractMetadata() {
+    const metadata = {
+      streamStartTime: null,
+      viewCount: 0,
+      likeCount: 0,
+      dislikeCount: 0,
+      rating: 0,
+      genre: '',
+      uploadDate: null,
+      description: '',
+      title: '',
+      author: '',
+      isLive: false
+    };
+
+    try {
+      // Get page content for metadata matching
+      const pageContent = document.documentElement.innerHTML;
+
+      // 1. Extract metadata from ytInitialData (most reliable for YouTube)
+      const ytDataScript = [...document.scripts].find(script => 
+        script.text?.includes('ytInitialData')
+      );
+      if (ytDataScript) {
+        const dataMatch = ytDataScript.text.match(/ytInitialData\s*=\s*({.+?});/);
+        if (dataMatch) {
+          const data = JSON.parse(dataMatch[1]);
+          const streamData = data?.microformat?.playerMicroformatRenderer;
+          if (streamData?.liveBroadcastDetails?.startTimestamp) {
+            metadata.streamStartTime = new Date(streamData.liveBroadcastDetails.startTimestamp);
+            debug.log('Found start time in ytInitialData:', metadata.streamStartTime);
+          }
+        }
+      }
+
+      // 2. Extract metadata from ld+json scripts
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const script of scripts) {
+        try {
+          const data = JSON.parse(script.textContent);
+          if (data?.publication?.startDate) {
+            metadata.streamStartTime = new Date(data.publication.startDate);
+            debug.log('Found start time in ld+json:', metadata.streamStartTime);
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      // 3. Extract metadata from meta tags
+      const startTimeTag = document.querySelector('meta[property="og:video:release_date"], meta[itemprop="startDate"]');
+      if (startTimeTag?.content) {
+        metadata.streamStartTime = new Date(startTimeTag.content);
+        // debug.log('Found start time in meta tag:', metadata.streamStartTime);
+      }
+
+      // 4. Extract additional metadata from page content
+      const metadataRegex = /"([^"]+)":\s*"([^"]+)"/g;
+      let match;
+      while ((match = metadataRegex.exec(pageContent)) !== null) {
+        const [_, key, value] = match;
+        
+        switch (key) {
+          case 'startDate':
+          case 'startTime':
+            const dateStr = value.endsWith('Z') ? value : value + 'Z';
+            const parsedDate = new Date(dateStr);
+            if (!isNaN(parsedDate.getTime())) {
+              metadata.streamStartTime = parsedDate;
+              debug.log('Found valid start date in metadata:', parsedDate);
+            }
+            break;
+          case 'userInteractionCount':
+            if (pageContent.includes('interactionType: https://schema.org/WatchAction')) {
+              metadata.viewCount = parseInt(value) || 0;
+            } else if (pageContent.includes('interactionType: https://schema.org/LikeAction')) {
+              metadata.likeCount = parseInt(value) || 0;
+            }
+            break;
+          case 'genre':
+            metadata.genre = value;
+            break;
+          case 'uploadDate':
+            const uploadDate = new Date(value);
+            if (!isNaN(uploadDate.getTime())) {
+              metadata.uploadDate = uploadDate;
+            }
+            break;
+          case 'description':
+            metadata.description = value;
+            break;
+          case 'name':
+            metadata.title = value;
+            break;
+          case 'author':
+            metadata.author = value;
+            break;
+          case 'isLive':
+          case 'isLiveContent':
+            metadata.isLive = value === 'true';
+            break;
+        }
+      }
+
+      // 5. Check for live stream indicators
+      if (pageContent.includes('"@type":"BroadcastEvent"')) {
+        metadata.isLive = true;
+      }
+
+      // Add dislike count fetch for YouTube videos only if enabled
+      if (window.location.href.includes('youtube.com') && settings.enableLikeDislikeChecker) {
+        const videoId = new URLSearchParams(window.location.search).get('v');
+        if (videoId) {
+          const rydData = await this.fetchDislikeCount(videoId);
+          if (rydData) {
+            metadata.dislikeCount = rydData.dislikes;
+            metadata.likeCount = rydData.likes;
+            metadata.rating = rydData.rating;
+            debug.log('Fetched RYD data:', rydData);
+          }
+        }
+      }
+
+      debug.log('Extracted metadata:', metadata);
+      return metadata;
+
+    } catch (error) {
+      debug.error('Error extracting metadata:', error);
+      return metadata;
+    }
+  }
+
+  static getStreamStartTime() {
+    const metadata = this.extractMetadata();
+    return metadata.streamStartTime;
+  }
+}
 
 class Video {
   constructor(videoDetails) {
@@ -157,11 +314,26 @@ class Video {
     this.isEnded = false;
     this.currentTime = videoDetails.currentTime || 0;
     this.totalTime = videoDetails.totalTime || 0;
-    this.videoElement = null;
+    this.videoElement = videoDetails.videoElement || null;
 
-    // Stream timing
-    this.streamStartTime = Date.now();
+    // Initialize stream timing
+    // this.initializeStreamTiming();
+
+    // Store additional metadata
+    const metadata = MetadataExtractor.extractMetadata();
+    this.metadata = {
+      viewCount: metadata.viewCount,
+      likeCount: metadata.likeCount,
+      dislikeCount: metadata.dislikeCount,
+      rating: metadata.rating,
+      genre: metadata.genre,
+      uploadDate: metadata.uploadDate,
+      description: metadata.description,
+      isLive: metadata.isLive
+    };
+    
     this.streamEndTime = 0;
+    this.streamEndDate = null;
     this.streamDuration = 0;
 
     // Session info
@@ -169,6 +341,94 @@ class Video {
     this.lastSavedTime = videoDetails.lastSavedTime || 0;
     this.lastSaveTimestamp = videoDetails.lastSaveTimestamp || 0;
     this.watchHistory = videoDetails.watchHistory || [];
+  }
+
+  initializeStreamTiming() {
+    let streamStartTime;
+    debug.log('Initializing stream timing...');
+
+    // Try to get start time from metadata first
+    const metadataStartTime = MetadataExtractor.getStreamStartTime();
+    debug.log('Metadata start time attempt:', {
+      found: !!metadataStartTime,
+      time: metadataStartTime?.toLocaleString(),
+      isValid: metadataStartTime && !isNaN(metadataStartTime.getTime())
+    });
+
+    if (metadataStartTime && !isNaN(metadataStartTime.getTime())) {
+      // streamStartTime = metadataStartTime;
+      debug.log('Using metadata start time:', streamStartTime.toLocaleString());
+    }
+    // Then try video element properties
+    else if (this.videoElement) {
+    //   const videoStartTime = this.videoElement.startTime || 
+    //                      this.videoElement.mediaStartTime || 
+    //                      this.videoElement.startDate;
+    
+    // debug.log('Video element start time attempt:', {
+    //   startTime: this.videoElement.startTime,
+    //   mediaStartTime: this.videoElement.mediaStartTime,
+    //   startDate: this.videoElement.startDate
+    // });
+
+    // if (videoStartTime) {
+    //   streamStartTime = new Date(videoStartTime);
+    //   debug.log('Using video element start time:', streamStartTime.toLocaleString());
+    // }
+  }
+
+  // If still no valid start time, try to get it from the page
+  // if (!streamStartTime || isNaN(streamStartTime.getTime())) {
+  //   // Look for stream start time in page metadata
+  //   const ldJson = document.querySelector('script[type="application/ld+json"]');
+  //   if (ldJson) {
+  //     try {
+  //       const data = JSON.parse(ldJson.textContent);
+  //       const startDate = data.publication?.startDate || data.startDate;
+  //       if (startDate) {
+  //         streamStartTime = new Date(startDate);
+  //         debug.log('Found start time in LD+JSON:', streamStartTime.toLocaleString());
+  //       }
+  //     } catch (e) {
+  //       debug.error('Error parsing LD+JSON:', e);
+  //     }
+  //   }
+  // }
+
+  // Last resort fallback
+  if (!streamStartTime || isNaN(streamStartTime.getTime())) {
+    const now = new Date();
+    const totalDurationMs = (this.totalTime || 0) * 1000;
+    
+    streamStartTime = new Date(now.getTime() - totalDurationMs);
+    
+    debug.log('No valid start time found, using fallback calculation:', {
+      currentTime: now.toLocaleString(),
+      totalDuration: `${Math.floor(this.totalTime / 3600)}h ${Math.floor((this.totalTime % 3600) / 60)}m ${Math.floor(this.totalTime % 60)}s`,
+      calculatedStart: streamStartTime.toLocaleString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    });
+  }
+
+  // Store the times
+  this._originalStreamStartTime = streamStartTime.getTime();
+  this.streamStartTime = this._originalStreamStartTime;
+  
+  this.streamStartDate = streamStartTime.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+
+  debug.log('Final stream timing:', {
+    startTime: this.streamStartTime,
+    startDate: this.streamStartDate,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    rawTime: streamStartTime.toLocaleString()
+  });
   }
 
   generateSessionId() {
@@ -205,6 +465,16 @@ class Video {
         timestamp: Date.now()
       });
     }
+
+    // Preserve the original stream start time
+    // if (this.streamStartTime !== this._originalStreamStartTime) {
+    //   debug.log('Restoring original stream start time:', {
+    //     current: this.streamStartTime,
+    //     original: this._originalStreamStartTime,
+    //     date: new Date(this._originalStreamStartTime).toLocaleString()
+    //   });
+    // }
+    // this.streamStartTime = this._originalStreamStartTime;
   }
 
   formatTime(time) {
@@ -235,7 +505,9 @@ class Video {
       lastSavedTime: this.lastSavedTime,
       lastSaveTimestamp: this.lastSaveTimestamp,
       streamStartTime: this.streamStartTime,
+      streamStartDate: this.streamStartDate,
       streamEndTime: this.streamEndTime,
+      streamEndDate: this.streamEndDate,
       sessionId: this.sessionId,
       watchHistory: this.watchHistory
     };
@@ -246,9 +518,19 @@ class Video {
     
     if (this.isLive) {
       debug.log('Live stream detected, updating properties');
-      this.totalTime = Infinity;
-      this.streamStartTime = Date.now();
+      
+      // Get the total stream duration
+      const totalTime = this.videoElement?.duration || 0;
+      debug.log('Total stream duration:', totalTime, 'seconds');
+      
+      // Only update stream timing if we don't have a valid start time
+      // if (!this._originalStreamStartTime) {
+      //   this.initializeStreamTiming();
+      // }
+      
+      this.totalTime = totalTime;
       this.streamEndTime = 0;
+      this.streamEndDate = null;
     }
     
     return this.isLive;
@@ -488,19 +770,18 @@ const getVideoDetails = (url) => {
         }
       }
       
-      // Live detection
-      // videoDetails.isLive = document.querySelector('.ytp-live-badge') !== null ||
-      //                      document.querySelector('[class*="live-badge"]') !== null;
-      videoDetails.isLive = LiveStreamDetector.detectLiveStream(videoElement);
-      debug.log('Live stream detected:', videoDetails.isLive);
-
-      // Extract video ID from URL
-      try {
-        const urlParams = new URLSearchParams(new URL(url).search);
-        videoDetails.videoId = urlParams.get('v') || '';
-      } catch (error) {
-        debug.error('Error extracting video ID:', error);
-      }
+      // Live detection and update
+      const video = new Video(videoDetails);
+      video.videoElement = videoElement;
+      video.updateLiveStatus().then(isLive => {
+        if (isLive) {
+          debug.log('Live stream detected, updating video details');
+          videoDetails.isLive = true;
+          videoDetails.streamStartTime = video.streamStartTime;
+          videoDetails.streamStartDate = video.streamStartDate;
+          videoDetails.totalTime = video.totalTime;
+        }
+      });
     }
     // Rumble live detection and info
     else if (url.includes('rumble.com')) {
@@ -665,7 +946,7 @@ class TimestampManager {
     setTimeout(() => {
       // Modified condition to also check seeking state
       if (this.hasRestoredPosition || this.isSeeking) {
-        debug.log('Starting auto-save after position confirmed');
+        //debug.log('Starting auto-save after position confirmed');
         this.startAutoSave();
       } else {
         debug.log('Position not confirmed, delaying auto-save');
@@ -734,6 +1015,7 @@ class TimestampManager {
     
     this.currentVideo.isEnded = true;
     this.currentVideo.streamEndTime = Date.now();
+    this.currentVideo.streamEndDate = new Date(this.currentVideo.streamEndTime).toISOString();
     this.saveTimestamp();
     this.stopAutoSave();
   }
@@ -744,11 +1026,14 @@ class TimestampManager {
     }
     
     this.saveInterval = setInterval(() => {
-      // Modified condition to handle seeking state
+      // Modified condition to handle seeking state and autoSaveNonLive setting
       if (!this.isRestoringTimestamp && (this.hasRestoredPosition || this.isSeeking)) {
         if (this.currentVideo?.videoElement && !this.currentVideo.videoElement.paused) {
-          debug.log('Auto-saving. Current time:', this.currentVideo.videoElement.currentTime);
-          this.saveTimestamp();
+          // Only auto-save if it's a live video or autoSaveNonLive is enabled
+          if (this.currentVideo.isLive || settings.autoSaveNonLive) {
+            debug.log('Auto-saving. Current time:', this.currentVideo.videoElement.currentTime);
+            this.saveTimestamp();
+          }
         }
       } else {
         debug.log('Skipping auto-save - restoration in progress or position not yet restored');
@@ -780,7 +1065,7 @@ class TimestampManager {
 
 // Initialize the timestamp manager
 const timestampManager = new TimestampManager();
-debug.log('Created TimestampManager instance');
+// debug.log('Created TimestampManager instance');
 
 // Add this function near the top, after the initial settings
 const isValidVideoPage = (url) => {
@@ -876,14 +1161,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Handle specific settings
       if (key === 'debugMode') {
         debug.log(`Debug mode ${value ? 'enabled' : 'disabled'}`);
-      } else if (key === 'autoSave') {
-        if (value && timestampManager.currentVideo) {
-          timestampManager.startAutoSave();
+      } else if (key === 'autoSave' || key === 'autoSaveNonLive') {
+        if ((key === 'autoSave' && value) || 
+            (key === 'autoSaveNonLive' && value && !timestampManager.currentVideo?.isLive)) {
+          if (timestampManager.currentVideo) {
+            timestampManager.startAutoSave();
+          }
         } else {
           timestampManager.stopAutoSave();
         }
       } else if (key === 'saveInterval') {
-        if (settings.autoSave && timestampManager.currentVideo) {
+        if ((settings.autoSave || (settings.autoSaveNonLive && !timestampManager.currentVideo?.isLive)) && 
+            timestampManager.currentVideo) {
           timestampManager.startAutoSave(); // Restart with new interval
         }
       }
@@ -966,4 +1255,3 @@ new MutationObserver(() => {
     }
   }
 }).observe(document, { subtree: true, childList: true });
-
