@@ -108,15 +108,17 @@ const StreamCard = ({ stream, onDelete, onRefresh, settings }) => {
   };
 
   const formatDate = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
-    return date.toLocaleString();
+    if (!timestamp) return 'N/A';
+    return new Date(timestamp).toLocaleString();
   };
 
-  const getVideoUrlWithTime = (url, timeInSeconds) => {
-    if (!url || !timeInSeconds) return url;
+  const getVideoUrlWithTime = (url, time) => {
     const baseUrl = url.split('?')[0];
-    return `${baseUrl}?t=${Math.floor(timeInSeconds)}`;
+    return `${baseUrl}?t=${Math.floor(time)}`;
+  };
+
+  const getThumbnailUrl = (videoId) => {
+    return `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
   };
 
   const DeleteIcon = () => (
@@ -144,9 +146,48 @@ const StreamCard = ({ stream, onDelete, onRefresh, settings }) => {
   return (
     <div className="stream-card">
       <div className="stream-card-header">
+        <div className="thumbnail-container">
+          <img 
+            src={getThumbnailUrl(stream.videoId)} 
+            alt={stream.videoTitle}
+            className="video-thumbnail"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = 'https://img.youtube.com/vi/default/mqdefault.jpg';
+            }}
+          />
+          {stream.isLive && (
+            <div className="live-badge">LIVE</div>
+          )}
+        </div>
         <div className="stream-info">
-          <h3 className="stream-title">{stream.videoTitle}</h3>
-          <div className="stream-channel">{stream.channelName}</div>
+          <h3 className="stream-title">
+            <a href={stream.url} target="_blank" rel="noopener noreferrer">
+              {stream.videoTitle}
+            </a>
+          </h3>
+          {stream.channelName && (
+            <div className="channel-name">
+              <a 
+                href={`https://www.youtube.com/channel/${stream.channelId || ''}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {stream.channelName}
+              </a>
+            </div>
+          )}
+          <div className="stream-meta">
+            <span className="current-time">
+              Current: {stream.currentTime ? Math.floor(stream.currentTime / 60) + ':' + 
+                String(Math.floor(stream.currentTime % 60)).padStart(2, '0') : '0:00'}
+            </span>
+            {stream.streamStartDate && (
+              <span className="start-date">
+                Started: {stream.streamStartDate}
+              </span>
+            )}
+          </div>
         </div>
         <div className="stream-actions">
           <button 
@@ -219,21 +260,24 @@ const StreamCard = ({ stream, onDelete, onRefresh, settings }) => {
 
         {stream.watchHistory && stream.watchHistory.length > 0 && (
           <div className="watch-history">
-            <h4>Watch History</h4>
+            <h4>Last Position</h4>
             <div className="history-list">
-              {stream.watchHistory.map((entry, index) => (
-                <div key={index} className="history-entry">
-                  <a 
-                    href={getVideoUrlWithTime(stream.url, entry.time)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="history-time link"
-                  >
-                    {entry.formattedTime}
-                  </a>
-                  <span className="history-timestamp">{formatDate(entry.timestamp)}</span>
-                </div>
-              ))}
+              {(() => {
+                const lastEntry = stream.watchHistory[stream.watchHistory.length - 1];
+                return (
+                  <div className="history-entry">
+                    <a 
+                      href={getVideoUrlWithTime(stream.url, lastEntry.time)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="history-time link"
+                    >
+                      {lastEntry.formattedTime}
+                    </a>
+                    <span className="history-timestamp">{formatDate(lastEntry.timestamp)}</span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

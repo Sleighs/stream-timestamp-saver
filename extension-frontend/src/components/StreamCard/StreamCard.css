@@ -1,10 +1,8 @@
 .stream-card {
   background: var(--background-color, #ffffff);
-  /* border-top: 1px solid var(--border-color, rgb(207, 217, 222)); */
   border-bottom: 1px solid var(--border-color, rgb(207, 217, 222));
   border-radius: 0px;
-  padding: 24px;
-  /* margin-bottom: 16px; */
+  padding: 16px;
   transition: background-color 0.2s ease;
 }
 
@@ -14,38 +12,96 @@
 
 .stream-card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
+.thumbnail-container {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.video-thumbnail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.stream-card:hover .video-thumbnail {
+  transform: scale(1.05);
+}
+
+.live-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: #ff0000;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+  z-index: 1;
+}
+
 .stream-info {
-  flex: 1;
-  margin-right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .stream-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-color, #0f1419);
-  margin: 0 0 4px 0;
+  margin: 0;
+  line-height: 1.4;
 }
 
-.stream-channel {
+.stream-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.stream-title a:hover {
+  color: #065fd4;
+}
+
+.channel-name {
   font-size: 14px;
   color: var(--text-secondary, #536471);
+}
+
+.channel-name a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.channel-name a:hover {
+  color: #065fd4;
 }
 
 .stream-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-top: 8px;
 }
 
 .stream-action-button {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 16px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 18px;
   border: 1px solid var(--border-color, #cfd9de);
   background: var(--background-color, #ffffff);
   color: var(--text-color, #0f1419);
@@ -54,9 +110,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
+  flex: 1;
 }
 
 .stream-action-button:hover {
@@ -73,8 +130,8 @@
 }
 
 .stream-action-button svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 .stream-action-button.refresh svg {
@@ -102,20 +159,9 @@
   }
 }
 
-.view-on-twitter {
-  color: var(--primary-color, #1d9bf0);
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.view-on-twitter:hover {
-  text-decoration: underline;
-}
-
 .delete-button {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: var(--background-color, #ffffff);
   border: 1px solid var(--border-color, #cfd9de);
@@ -125,6 +171,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   padding: 0;
+  flex-shrink: 0;
 }
 
 .delete-button:hover {
@@ -133,8 +180,8 @@
 }
 
 .delete-button svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   stroke: var(--text-secondary, #536471);
   stroke-width: 2;
   stroke-linecap: round;
@@ -147,7 +194,9 @@
 }
 
 .stream-content {
-  margin-bottom: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color, #cfd9de);
 }
 
 .stream-details {
@@ -272,26 +321,11 @@
     --text-secondary-light: rgba(83, 100, 113, 0.1);
     --background-secondary: #1c2732;
   }
-
-  .time-value.link,
-  .history-time.link {
-    color: var(--primary-color, #1d9bf0);
-  }
-
-  .time-value.link:hover,
-  .history-time.link:hover {
-    color: var(--primary-color-light, #4db5f7);
-  }
-
-  /* .delete-button {
-    --background-color: #15202b;
-    --border-color: #38444d;
-  } */
 }
 
 @media (max-width: 600px) {
   .stream-card {
-    padding: 16px;
+    padding: 12px;
   }
 
   .stream-times {

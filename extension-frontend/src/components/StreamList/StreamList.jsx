@@ -172,10 +172,17 @@ const StreamList = ({ streams, onDeleteStream, onRefresh, settings = {} }) => {
 
       if (!navigator.onLine || !chrome?.storage) {
         console.warn('You are offline. Using localStorage data.');
-        const localStorageData = localStorage.getItem('stream-saver--streams');
+        const localStorageData = localStorage.getItem('stream-timestamp-saver--timestamps');
         if (localStorageData) {
           const parsedData = JSON.parse(localStorageData);
-          setAllStreams(parsedData);
+          const streams = Object.entries(parsedData)
+            .filter(([key]) => key.startsWith('timestamp-'))
+            .map(([key, value]) => ({
+              ...value,
+              videoId: key.replace('timestamp-', ''),
+              url: `https://www.youtube.com/watch?v=${key.replace('timestamp-', '')}`
+            }));
+          setAllStreams(streams);
         }
         return;
       }
@@ -183,19 +190,41 @@ const StreamList = ({ streams, onDeleteStream, onRefresh, settings = {} }) => {
       // Get streams from all storage sources
       const [chromeLocal, chromeSync, localStorageData] = await Promise.all([
         new Promise((resolve) => {
-          chrome.storage.local.get(['stream-saver--streams'], (result) => {
-            resolve(JSON.parse(result['stream-saver--streams'] || '[]'));
+          chrome.storage.local.get(null, (result) => {
+            const streams = Object.entries(result)
+              .filter(([key]) => key.startsWith('timestamp-'))
+              .map(([key, value]) => ({
+                ...value,
+                videoId: key.replace('timestamp-', ''),
+                url: `https://www.youtube.com/watch?v=${key.replace('timestamp-', '')}`
+              }));
+            resolve(streams);
           });
         }),
         new Promise((resolve) => {
-          chrome.storage.sync.get(['stream-saver--streams'], (result) => {
-            resolve(JSON.parse(result['stream-saver--streams'] || '[]'));
+          chrome.storage.sync.get(null, (result) => {
+            const streams = Object.entries(result)
+              .filter(([key]) => key.startsWith('timestamp-'))
+              .map(([key, value]) => ({
+                ...value,
+                videoId: key.replace('timestamp-', ''),
+                url: `https://www.youtube.com/watch?v=${key.replace('timestamp-', '')}`
+              }));
+            resolve(streams);
           });
         }),
         new Promise((resolve) => {
           try {
-            const data = localStorage.getItem('stream-saver--streams');
-            resolve(JSON.parse(data || '[]'));
+            const data = localStorage.getItem('stream-timestamp-saver--timestamps');
+            const parsedData = JSON.parse(data || '{}');
+            const streams = Object.entries(parsedData)
+              .filter(([key]) => key.startsWith('timestamp-'))
+              .map(([key, value]) => ({
+                ...value,
+                videoId: key.replace('timestamp-', ''),
+                url: `https://www.youtube.com/watch?v=${key.replace('timestamp-', '')}`
+              }));
+            resolve(streams);
           } catch (e) {
             console.error('Error reading localStorage:', e);
             resolve([]);

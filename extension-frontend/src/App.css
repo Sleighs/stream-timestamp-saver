@@ -40,3 +40,9 @@
 .read-the-docs {
   color: #888;
 }
+
+.header-brand-title {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-bottom: 0.5em;
+}
