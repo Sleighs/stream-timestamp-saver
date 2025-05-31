@@ -6,7 +6,7 @@ chrome.storage.local.get(null, function(data) {console.log('data', data);})
 
 // Default options
 const defaultOptions = {
-  debugMode: true,
+  debugMode: false,
 };
 
 // Options stored in chrome.storage.sync

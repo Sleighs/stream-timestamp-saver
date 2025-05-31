@@ -6,7 +6,7 @@ const browser = chrome || browser;
 let settings = {
   enableExtension: true,
   browserStorageType: 'local',
-  debugMode: true,
+  debugMode: false,
   notificationsEnabled: true,
   autoSave: true,
   autoSaveNonLive: false,
